@@ -15,7 +15,7 @@ static adc_cali_handle_t cali_handle;
 
 #define ADC_UNIT_USED ADC_UNIT_1
 #define ADC_CHANNEL_USED ADC_CHANNEL_3
-#define ADC_CHANNLE_USED_4 ADC_CHANNEL_4
+#define ADC_CHANNEL_USED_4 ADC_CHANNEL_4
 #define ADC_ATTEN_USED ADC_ATTEN_DB_12
 #define ADC_BITWIDTH_USED ADC_BITWIDTH_12
 
@@ -82,6 +82,10 @@ void adc_init(void)
         adc_handle,
         ADC_CHANNEL_USED,
         &channel_config));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(
+        adc_handle,
+        ADC_CHANNEL_USED_4,
+        &channel_config));
 
     adc_cali_curve_fitting_config_t cali_config = {
         .unit_id = ADC_UNIT_USED,
@@ -99,31 +103,62 @@ void app_main(void)
 
     while (1)
     {
-        int raw_adc_value = 0;
-        int u_cali = 0;
+        int raw_adc_led_value = 0;
+        int raw_adc_motor_value = 0;
+        int u_cali_led = 0;
+        int u_cali_motor = 0;
 
         ESP_ERROR_CHECK(adc_oneshot_read(
             adc_handle,
             ADC_CHANNEL_USED,
-            &raw_adc_value));
+            &raw_adc_led_value));
+        ESP_ERROR_CHECK(adc_oneshot_read(
+            adc_handle,
+            ADC_CHANNEL_USED_4,
+            &raw_adc_motor_value));
 
         if (cali_handle)
         {
             ESP_ERROR_CHECK(
-                adc_cali_raw_to_voltage(cali_handle, raw_adc_value, &u_cali));
+                adc_cali_raw_to_voltage(
+                    cali_handle,
+                    raw_adc_led_value,
+                    &u_cali_led));
+            ESP_ERROR_CHECK(
+                adc_cali_raw_to_voltage(
+                    cali_handle,
+                    raw_adc_motor_value,
+                    &u_cali_motor));
         }
         else
         {
-            u_cali = raw_adc_value;
+            u_cali_led = raw_adc_led_value;
+            u_cali_motor = raw_adc_motor_value;
         }
 
-        int duty_cycle = (u_cali * 1023) / 3100;
+        int duty_led_cycle = (u_cali_led * 1023) / 3300;
+        int duty_motor_cycle = (u_cali_motor * 1023) / 3300;
 
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_LED, duty_cycle);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_LED);
+        ledc_set_duty(
+            LEDC_LOW_SPEED_MODE,
+            LEDC_CHANNEL_LED,
+            duty_led_cycle);
+        ledc_update_duty(
+            LEDC_LOW_SPEED_MODE,
+            LEDC_CHANNEL_LED);
 
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_MOTOR, duty_cycle);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_MOTOR);
+        ledc_set_duty(
+            LEDC_LOW_SPEED_MODE,
+            LEDC_CHANNEL_MOTOR,
+            duty_motor_cycle);
+        ledc_update_duty(
+            LEDC_LOW_SPEED_MODE,
+            LEDC_CHANNEL_MOTOR);
+
+        ESP_LOGI(TAG,
+                 "LED: raw=%d %dmV duty=%d | MOTOR: raw=%d %dmV duty=%d",
+                 raw_adc_led_value, u_cali_led, duty_led_cycle,
+                 raw_adc_motor_value, u_cali_motor, duty_motor_cycle);
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
